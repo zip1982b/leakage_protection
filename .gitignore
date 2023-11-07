@@ -1,0 +1,8 @@
+/build
+
+sdkconfig
+sdkconfig.old
+
+pytest_generic_gpio_example.py
+
+
