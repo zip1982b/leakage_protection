@@ -6,7 +6,6 @@
  *  дисплей HD44780 подключенный по i2c
  *  поворотный энкодер
  *
-
 */
 #include <stdio.h>
 #include <string.h>
@@ -16,6 +15,22 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
+
+
+#include <driver/i2c.h>
+#include <esp_log.h>
+#include "sdkconfig.h"
+#include "HD44780.h"
+
+
+
+#define LCD_ADDR 0x27
+#define SDA_PIN  18
+#define SCL_PIN  19
+#define LCD_COLS 16
+#define LCD_ROWS 2
+
+
 
 /**
  * Brief:
@@ -42,6 +57,12 @@
  * */
 #define ESP_INTR_FLAG_DEFAULT 0
 
+
+
+static char tag[] = "LCD test";
+void LCD_DemoTask(void* param);
+
+
 static QueueHandle_t gpio_evt_queue = NULL;
 
 static void IRAM_ATTR sensors_isr_handler(void* arg)
@@ -59,6 +80,10 @@ static void sensor_task(void* arg)
         }
     }
 }
+
+
+
+
 
 void app_main(void)
 {
@@ -86,10 +111,17 @@ void app_main(void)
     //change gpio interrupt type for one pin
     //gpio_set_intr_type(GPIO_INPUT_IO_0, GPIO_INTR_ANYEDGE);
 
+    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    xTaskCreate(&LCD_DemoTask, "Demo Task", 2048, NULL, 5, NULL);
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     //start task
     xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 10, NULL);
+    
+    //LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    //xTaskCreate(&LCD_DemoTask, "Demo Task", 2048, NULL, 5, NULL);
+
+
 
     //install gpio isr service
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
@@ -102,6 +134,45 @@ void app_main(void)
     int cnt = 0;
     while(1) {
         printf("cnt: %d\n", cnt++);
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+
+}
+
+
+void LCD_DemoTask(void* param)
+{
+    char txtBuf[8];
+    while (true) {
+        int row = 0, col = 0;
+        LCD_home();
+        LCD_clearScreen();
+        LCD_writeStr("----- 20x4 LCD -----");
+        LCD_setCursor(0, 1);
+        LCD_writeStr("LCD Library Demo");
+        LCD_setCursor(12, 3);
+        LCD_writeStr("Time: ");
+        for (int i = 10; i >= 0; i--) {
+            LCD_setCursor(18, 3);
+            sprintf(txtBuf, "%02d", i);
+            printf(txtBuf);
+            LCD_writeStr(txtBuf);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+
+        for (int i = 0; i < 80; i++) {
+            LCD_clearScreen();
+            LCD_setCursor(col, row);
+            LCD_writeChar('*');
+
+            if (i >= 19) {
+                row = (i + 1) / 20;
+            }
+            if (col++ >= 19) {
+                col = 0;
+            }
+
+            vTaskDelay(50 / portTICK_PERIOD_MS);
+        }
     }
 }
