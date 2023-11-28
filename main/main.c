@@ -24,7 +24,7 @@
 
 
 
-#define LCD_ADDR 0x27
+#define LCD_ADDR 0x3F
 #define SDA_PIN  18
 #define SCL_PIN  19
 #define LCD_COLS 16
@@ -118,8 +118,6 @@ void app_main(void)
     //start task
     xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 10, NULL);
     
-    //LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-    //xTaskCreate(&LCD_DemoTask, "Demo Task", 2048, NULL, 5, NULL);
 
 
 
@@ -147,32 +145,35 @@ void LCD_DemoTask(void* param)
         int row = 0, col = 0;
         LCD_home();
         LCD_clearScreen();
-        LCD_writeStr("----- 20x4 LCD -----");
+        LCD_writeStr("--- 16x2 LCD ---");
         LCD_setCursor(0, 1);
         LCD_writeStr("LCD Library Demo");
-        LCD_setCursor(12, 3);
-        LCD_writeStr("Time: ");
+        //LCD_setCursor(12, 3);
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+		LCD_clearScreen();
+        LCD_setCursor(0, 0);
+		LCD_writeStr("Time: ");
         for (int i = 10; i >= 0; i--) {
-            LCD_setCursor(18, 3);
+            LCD_setCursor(5, 0);
             sprintf(txtBuf, "%02d", i);
             printf(txtBuf);
             LCD_writeStr(txtBuf);
             vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
-
         for (int i = 0; i < 80; i++) {
             LCD_clearScreen();
             LCD_setCursor(col, row);
             LCD_writeChar('*');
 
-            if (i >= 19) {
-                row = (i + 1) / 20;
+            if (i >= 33) {
+                row = (i + 1) / 16;
+				row = 0;
             }
-            if (col++ >= 19) {
+            if (col++ >= 15) {
                 col = 0;
             }
 
-            vTaskDelay(50 / portTICK_PERIOD_MS);
+            vTaskDelay(150 / portTICK_PERIOD_MS);
         }
     }
 }
