@@ -60,7 +60,7 @@
 
 
 static char tag[] = "LCD test";
-void LCD_DemoTask(void* param);
+void LCD_Display(void* param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
@@ -112,7 +112,7 @@ void app_main(void)
     //gpio_set_intr_type(GPIO_INPUT_IO_0, GPIO_INTR_ANYEDGE);
 
     LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-    xTaskCreate(&LCD_DemoTask, "Demo Task", 2048, NULL, 5, NULL);
+    xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     //start task
@@ -138,42 +138,76 @@ void app_main(void)
 }
 
 
-void LCD_DemoTask(void* param)
+void LCD_Display(void* param)
 {
-    char txtBuf[8];
+	char menuItem1[] = "Sensors";
+	char menuItem2[] = "Ball valve";
+	char menuItem3[] = "Power";
+	char menuItem4[] = "Errors";
+
+
+	uint8_t frame = 1;
+    int row = 0, col = 0;
+    //char txtBuf[8];
+    LCD_home();
+    LCD_clearScreen();
+    LCD_writeStr("--- 16x2 LCD ---");
+    LCD_setCursor(0, 1);
+    LCD_writeStr("Water protection");
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    LCD_home();
+    LCD_clearScreen();
     while (true) {
-        int row = 0, col = 0;
-        LCD_home();
-        LCD_clearScreen();
-        LCD_writeStr("--- 16x2 LCD ---");
-        LCD_setCursor(0, 1);
-        LCD_writeStr("LCD Library Demo");
-        //LCD_setCursor(12, 3);
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+		for(int i=0; i<3; i++){
+		switch(frame){
+			case 1:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(menuItem1);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(menuItem2);
+				break;
+			case 2:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(menuItem2);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(menuItem3);
+				break;
+			case 3:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(menuItem3);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(menuItem4);
+				break;
+		}
+
+    	vTaskDelay(5000 / portTICK_PERIOD_MS);
 		LCD_clearScreen();
-        LCD_setCursor(0, 0);
-		LCD_writeStr("Time: ");
-        for (int i = 10; i >= 0; i--) {
-            LCD_setCursor(5, 0);
-            sprintf(txtBuf, "%02d", i);
-            printf(txtBuf);
-            LCD_writeStr(txtBuf);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-        }
-        for (int i = 0; i < 80; i++) {
-            LCD_clearScreen();
-            LCD_setCursor(col, row);
-            LCD_writeChar('*');
+		frame = i+1;
+		}
 
-            if (i >= 33) {
-                row = (i + 1) / 16;
-				row = 0;
-            }
-            if (col++ >= 15) {
-                col = 0;
-            }
-
-            vTaskDelay(150 / portTICK_PERIOD_MS);
-        }
+		/*
+		switch(frame){
+			case 1:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(&menuItem1);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(&menuItem2);
+				LCD_clearScreen();
+				break;
+			case 2:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(&menuItem2);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(&menuItem3);
+				LCD_clearScreen();
+				break;
+			case 3:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(&menuItem3);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(&menuItem4);
+				LCD_clearScreen();
+				break;
+		}*/
     }
 }
