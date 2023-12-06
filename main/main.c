@@ -31,6 +31,15 @@
 #define LCD_ROWS 2
 
 
+/* 	
+	cr	- clockwise rotation
+	ccr	- counter clockwise rotation
+	bp	- button pressed
+*/
+enum action{cr, ccr, bp}; 
+
+
+
 
 /**
  * Brief:
@@ -47,7 +56,12 @@
 #define SENSOR1     CONFIG_GPIO_INPUT_0
 //#define SENSOR2     CONFIG_GPIO_INPUT_1
 //#define SENSOR3     CONFIG_GPIO_INPUT_2
-#define GPIO_INPUT_PIN_SEL  (1ULL<<SENSOR1)
+
+#define GPIO_ENC_CLK     35
+#define GPIO_ENC_DT		 32
+#define GPIO_ENC_SW		 33
+#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_ENC_CLK) | (1ULL<<GPIO_ENC_DT) | (1ULL<<GPIO_ENC_SW) | (1ULL<<SENSOR1))
+
 /*
  * Let's say, GPIO_INPUT_IO_0=4, GPIO_INPUT_IO_1=5
  * In binary representation,
@@ -64,12 +78,79 @@ void LCD_Display(void* param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
+static QueueHandle_t enc_evt_queue = NULL;
+static QueueHandle_t ENC_queue = NULL;
 
-static void IRAM_ATTR sensors_isr_handler(void* arg)
+
+
+
+static void IRAM_ATTR gpio_isr_handler(void* arg)
 {
     uint32_t gpio_num = (uint32_t) arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+	switch(gpio_num){
+		case GPIO_ENC_CLK:
+			gpio_set_intr_type(GPIO_ENC_CLK, GPIO_INTR_DISABLE);
+    		xQueueSendFromISR(enc_evt_queue, &gpio_num, NULL);
+			break;
+		case GPIO_ENC_DT:
+			gpio_set_intr_type(GPIO_ENC_DT, GPIO_INTR_DISABLE);
+    		xQueueSendFromISR(enc_evt_queue, &gpio_num, NULL);
+			break;
+		case GPIO_ENC_SW:
+			gpio_set_intr_type(GPIO_ENC_SW, GPIO_INTR_DISABLE);
+    		xQueueSendFromISR(enc_evt_queue, &gpio_num, NULL);
+			break;
+		case SENSOR1:
+			gpio_set_intr_type(SENSOR1, GPIO_INTR_DISABLE);
+    		xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+			break;
+	}
+    //xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
+
+
+
+
+static void ENC(void* arg){
+	enum action rotate;
+	uint32_t io_num;
+	for(;;) {
+		io_num = 0;
+		xQueueReceive(enc_evt_queue, &io_num, portMAX_DELAY); // the task is blocked until the data arrives
+		if(io_num == GPIO_ENC_CLK){
+			xQueueReceive(enc_evt_queue, &io_num, 100/portTICK_PERIOD_MS);
+			gpio_set_intr_type(GPIO_ENC_CLK, GPIO_INTR_ANYEDGE); //enable
+			if (io_num == GPIO_ENC_DT){
+				rotate = cr;
+				printf("[ENC]clockwise rotation\n");
+				xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS); //xStatus = 
+				gpio_set_intr_type(GPIO_ENC_DT, GPIO_INTR_ANYEDGE);//enable
+			}
+		}
+		else if(io_num == GPIO_ENC_DT){
+			xQueueReceive(enc_evt_queue, &io_num, 100/portTICK_PERIOD_MS);
+			gpio_set_intr_type(GPIO_ENC_DT, GPIO_INTR_ANYEDGE);
+			if (io_num == GPIO_ENC_CLK){
+				rotate = ccr;
+				printf("[ENC]counter clockwise rotation\n");
+				xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS);//xStatus = 
+				gpio_set_intr_type(GPIO_ENC_CLK, GPIO_INTR_ANYEDGE);
+			}
+		}
+		else if(io_num == GPIO_ENC_SW){
+			rotate = bp;
+			printf("[ENC]Button is pressed\n");
+			vTaskDelay(300 / portTICK_PERIOD_MS);
+			xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS);//xStatus = 
+			gpio_set_intr_type(GPIO_ENC_SW, GPIO_INTR_NEGEDGE);//enable
+		}
+
+	}
+}
+
+
+
+
 
 static void sensor_task(void* arg)
 {
@@ -83,72 +164,22 @@ static void sensor_task(void* arg)
 
 
 
-
-
-void app_main(void)
-{
-    //zero-initialize the config structure.
-    gpio_config_t io_conf = {};
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);
-
-    //interrupt of falling edge
-    io_conf.intr_type = GPIO_INTR_NEGEDGE;
-    //bit mask of the pins, use GPIO4 here
-    io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
-    //set as input mode
-    io_conf.mode = GPIO_MODE_INPUT;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
-
-    //change gpio interrupt type for one pin
-    //gpio_set_intr_type(GPIO_INPUT_IO_0, GPIO_INTR_ANYEDGE);
-
-    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-    xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
-    //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    //start task
-    xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 10, NULL);
-    
-
-
-
-    //install gpio isr service
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(SENSOR1, sensors_isr_handler, (void*) SENSOR1);
-
-
-    printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
-
-    int cnt = 0;
-    while(1) {
-        printf("cnt: %d\n", cnt++);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-
-}
-
-
 void LCD_Display(void* param)
 {
+	enum action rotate;
+    uint32_t io_num;
+	portBASE_TYPE xStatusReceive;
 	char menuItem1[] = "Sensors";
 	char menuItem2[] = "Ball valve";
 	char menuItem3[] = "Power";
 	char menuItem4[] = "Errors";
-
-
+	uint8_t change = 1;
+	uint8_t down_cw;
+	uint8_t up_ccw;
+	uint8_t press_button;
 	uint8_t frame = 1;
     int row = 0, col = 0;
-    //char txtBuf[8];
+
     LCD_home();
     LCD_clearScreen();
     LCD_writeStr("--- 16x2 LCD ---");
@@ -158,7 +189,34 @@ void LCD_Display(void* param)
     LCD_home();
     LCD_clearScreen();
     while (true) {
-		for(int i=0; i<3; i++){
+		io_num = 0;
+		xStatusReceive = xQueueReceive(ENC_queue, &rotate, 300/portTICK_PERIOD_MS); // portMAX_DELAY - (very long time) сколь угодно долго - 100/portTICK_RATE_MS
+		if(xStatusReceive == pdPASS){
+			change = 1;
+			printf("[LCD_Display]rotate = %d\n", rotate);
+			switch(rotate){
+				case 0: //down_cw = clockwise
+					down_cw = 1;
+					frame++;
+					break;
+				case 1: //up_ccw = counter clockwise
+					up_ccw = 1;
+					frame--;
+					break;
+				case 2: //press_button = button pressed
+					press_button = 1;
+					break;
+			}
+		}
+		if(frame>3) frame = 3;
+		else if (frame<1) frame = 1;
+
+
+		if(change){
+			LCD_clearScreen();
+			change = 0;
+		}	
+		printf("[LCD_Display]frame = %d\n", frame);
 		switch(frame){
 			case 1:
 				LCD_setCursor(0, 0);
@@ -179,35 +237,66 @@ void LCD_Display(void* param)
 				LCD_writeStr(menuItem4);
 				break;
 		}
+    //LCD_clearScreen();
+	}
+}
 
-    	vTaskDelay(5000 / portTICK_PERIOD_MS);
-		LCD_clearScreen();
-		frame = i+1;
-		}
 
-		/*
-		switch(frame){
-			case 1:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(&menuItem1);
-				LCD_setCursor(0, 1);
-				LCD_writeStr(&menuItem2);
-				LCD_clearScreen();
-				break;
-			case 2:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(&menuItem2);
-				LCD_setCursor(0, 1);
-				LCD_writeStr(&menuItem3);
-				LCD_clearScreen();
-				break;
-			case 3:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(&menuItem3);
-				LCD_setCursor(0, 1);
-				LCD_writeStr(&menuItem4);
-				LCD_clearScreen();
-				break;
-		}*/
+void app_main(void)
+{
+    //zero-initialize the config structure.
+    gpio_config_t io_conf = {};
+    //disable interrupt
+    //io_conf.intr_type = GPIO_INTR_DISABLE;
+    //disable pull-down mode
+    //io_conf.pull_down_en = 0;
+    //disable pull-up mode
+    //io_conf.pull_up_en = 0;
+    //configure GPIO with the given settings
+    //gpio_config(&io_conf);
+
+    //interrupt of falling edge
+    io_conf.intr_type = GPIO_INTR_ANYEDGE;//GPIO_INTR_NEGEDGE
+	//bit mask of the pins use GPIO here
+	io_conf.pin_bit_mask = GPIO_INPUT_PIN_SEL;
+    //set as input mode
+    io_conf.mode = GPIO_MODE_INPUT;
+    //disable pull-up mode
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
+    //change gpio interrupt type for one pin
+    gpio_set_intr_type(SENSOR1, GPIO_INTR_NEGEDGE);
+
+    //install gpio isr service
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    //hook isr handler for specific gpio pin
+    gpio_isr_handler_add(SENSOR1, gpio_isr_handler, (void*) SENSOR1);
+	
+	gpio_isr_handler_add(GPIO_ENC_CLK, gpio_isr_handler, (void*) GPIO_ENC_CLK);
+    //hook isr handler for specific gpio pin
+	gpio_isr_handler_add(GPIO_ENC_DT, gpio_isr_handler, (void*) GPIO_ENC_DT);
+	//    	//hook isr handler for specific gpio pin
+	gpio_isr_handler_add(GPIO_ENC_SW, gpio_isr_handler, (void*) GPIO_ENC_SW);
+    //create a queue to handle gpio event from isr
+    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    enc_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+	ENC_queue = xQueueCreate(10, sizeof(uint32_t));
+
+	
+	//start tasks
+    xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 12, NULL);
+    
+    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
+	xTaskCreate(ENC, "ENC", 1548, NULL, 12, NULL);
+
+    printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
+
+    int cnt = 0;
+    while(1) {
+        printf("cnt: %d\n", cnt++);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+
 }
