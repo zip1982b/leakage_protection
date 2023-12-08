@@ -1,4 +1,4 @@
-menu "Example Configuration"
+menu "Leakage protection Configuration"
 
     orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
 
@@ -18,18 +18,18 @@ menu "Example Configuration"
         help
             GPIO pin number to be used as GPIO_OUTPUT_IO_1.
 
-    config GPIO_INPUT_0
-        int "GPIO input pin 0"
+    config SENSOR_1
+		int "GPIO input pin"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
         default 4
         help
-            GPIO pin number to be used as GPIO_INPUT_IO_0.
+            GPIO pin number to be used as SENSOR1.
 
-    config GPIO_INPUT_1
-        int "GPIO input pin 1"
+    config SENSOR_2
+        int "GPIO input pin"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
         default 5
         help
-            GPIO pin number to be used as GPIO_INPUT_IO_1.
+            GPIO pin number to be used as SENSOR2.
 
 endmenu
