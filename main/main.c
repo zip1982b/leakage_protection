@@ -284,11 +284,11 @@ void app_main(void)
 	ENC_queue = xQueueCreate(10, sizeof(uint32_t));
 
 	//start tasks
-    xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 12, NULL);
+    xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 10, NULL);
     
     LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
     xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
-	xTaskCreate(ENC, "ENC", 2048, NULL, 12, NULL);
+	xTaskCreate(ENC, "ENC", 2048, NULL, 11, NULL);
 
     printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
 
