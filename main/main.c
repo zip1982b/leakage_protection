@@ -119,30 +119,30 @@ static void ENC(void* arg){
 		io_num = 0;
 		xQueueReceive(enc_evt_queue, &io_num, portMAX_DELAY); // the task is blocked until the data arrives
 		if(io_num == GPIO_ENC_CLK){
-			xQueueReceive(enc_evt_queue, &io_num, 100/portTICK_PERIOD_MS);
+			xQueueReceive(enc_evt_queue, &io_num, 50/portTICK_PERIOD_MS);
 			gpio_set_intr_type(GPIO_ENC_CLK, GPIO_INTR_ANYEDGE); //enable
 			if (io_num == GPIO_ENC_DT){
 				rotate = cr;
 				ESP_LOGI(TAG, "[ENC] clockwise rotation");	
-				xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS); //xStatus = 
+				xQueueSendToBack(ENC_queue, &rotate, 50/portTICK_PERIOD_MS); //xStatus = 
 				gpio_set_intr_type(GPIO_ENC_DT, GPIO_INTR_ANYEDGE);//enable
 			}
 		}
 		else if(io_num == GPIO_ENC_DT){
-			xQueueReceive(enc_evt_queue, &io_num, 100/portTICK_PERIOD_MS);
+			xQueueReceive(enc_evt_queue, &io_num, 50/portTICK_PERIOD_MS);
 			gpio_set_intr_type(GPIO_ENC_DT, GPIO_INTR_ANYEDGE);
 			if (io_num == GPIO_ENC_CLK){
 				rotate = ccr;
 				ESP_LOGI(TAG, "[ENC]counter clockwise rotation");	
-				xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS);//xStatus = 
+				xQueueSendToBack(ENC_queue, &rotate, 50/portTICK_PERIOD_MS);//xStatus = 
 				gpio_set_intr_type(GPIO_ENC_CLK, GPIO_INTR_ANYEDGE);
 			}
 		}
 		else if(io_num == GPIO_ENC_SW){
 			rotate = bp;
 			ESP_LOGI(TAG, "[ENC] Button is pressed");	
-			vTaskDelay(300 / portTICK_PERIOD_MS);
-			xQueueSendToBack(ENC_queue, &rotate, 100/portTICK_PERIOD_MS);//xStatus = 
+			vTaskDelay(100 / portTICK_PERIOD_MS);
+			xQueueSendToBack(ENC_queue, &rotate, 50/portTICK_PERIOD_MS);//xStatus = 
 			gpio_set_intr_type(GPIO_ENC_SW, GPIO_INTR_NEGEDGE);//enable
 		}
 
