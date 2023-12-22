@@ -1,6 +1,13 @@
 | Supported Target | ESP32 DevkitC v4 | 
 
 # Project name: Leakage protection                                       BLE
+
+![Image alt](./img/leakage_protection.jpg)
+
+
+
+
+
 												                         \|/
 										--------------------------------  |
 |LCD1602|<-PCF8574AT|                   |            ESP32             |--|
