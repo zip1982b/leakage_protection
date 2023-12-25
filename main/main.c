@@ -137,65 +137,79 @@ void LCD_Display(void* param)
 	char menuItem3[] = "Power";
 	char menuItem4[] = "Errors";
 	uint8_t change = 1;
-	uint8_t frame = 1;
-    //int row = 0, col = 0;
+	uint8_t cursor = 1;
+
 
     LCD_home();
     LCD_clearScreen();
     LCD_writeStr("--- 16x2 LCD ---");
     LCD_setCursor(0, 1);
-    LCD_writeStr("Water protection");
+    LCD_writeStr("leakage protect");
     vTaskDelay(5000 / portTICK_PERIOD_MS);
     LCD_home();
     LCD_clearScreen();
     while (true) {
 		io_num = 0;
-		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - (very long time) сколь угодно долго - 100/portTICK_RATE_MS
+		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
 		if(xStatusReceive == pdPASS){
-    		vTaskDelay(350 / portTICK_PERIOD_MS);
+    		vTaskDelay(150 / portTICK_PERIOD_MS);
 			change = 1;
 			ESP_LOGI(TAG, "[LCD Display] button = %li", io_num);	
 			switch(io_num){
 				case 25: //down
 					gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
-					frame++;
+					cursor++;
 					break;
 				case 32: //up
 					gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
-					frame--;
+					cursor--;
 					break;
 				case 33: //OK
 					gpio_set_intr_type(GPIO_OK, GPIO_INTR_NEGEDGE);
 					break;
 			}
 		}
-		if(frame>3) frame = 3;
-		else if (frame<1) frame = 1;
+		if(cursor>4) cursor = 4;
+		else if (cursor<1) cursor = 1;
 
 
 		if(change){
 			LCD_clearScreen();
-			ESP_LOGI(TAG, "[LCD Display] frame = %d", frame);	
+			ESP_LOGI(TAG, "[LCD Display] cursor = %d", cursor);	
 			change = 0;
 		}	
-		switch(frame){
+		switch(cursor){
 			case 1:
 				LCD_setCursor(0, 0);
 				LCD_writeStr(menuItem1);
+				LCD_setCursor(14, 0);
+				LCD_writeStr("<-");
 				LCD_setCursor(0, 1);
 				LCD_writeStr(menuItem2);
 				break;
 			case 2:
 				LCD_setCursor(0, 0);
-				LCD_writeStr(menuItem2);
+				LCD_writeStr(menuItem1);
 				LCD_setCursor(0, 1);
-				LCD_writeStr(menuItem3);
+				LCD_writeStr(menuItem2);
+				LCD_setCursor(14, 1);
+				LCD_writeStr("<-");
 				break;
 			case 3:
 				LCD_setCursor(0, 0);
 				LCD_writeStr(menuItem3);
+				LCD_setCursor(14, 0);
+				LCD_writeStr("<-");
 				LCD_setCursor(0, 1);
 				LCD_writeStr(menuItem4);
+				break;
+			case 4:
+				LCD_setCursor(0, 0);
+				LCD_writeStr(menuItem3);
+				LCD_setCursor(0, 1);
+				LCD_writeStr(menuItem4);
+				LCD_setCursor(14, 1);
+				LCD_writeStr("<-");
 				break;
 		}
 	}
