@@ -1,10 +1,13 @@
 /* water leakage protection
- * Защита от протечки воды.
+ * ESP32 DevkitC v4 - Интерфейсный контроллер
+ * Задачи:
+ *  - отображение на дисплее меню по управлению устройством.
+ *  - связь с беспроводными датчиками по BLE.
+ *  - обмен данными с главным контроллером по i2c.
+ * 
  * Состав:
- *  3 проводных датчика обнаружения протечки (3 gpio настроенные на прерывания по спадающему фронту)
- *  2 реле для подачи питания на электропривод (открытие/закрытие шарового крана на подачу воды в квартиру)
  *  дисплей HD44780 подключенный по i2c
- *  поворотный энкодер
+ *  3 кнопки по управлению меню (up - down - ok)
  *
 */
 #include <stdio.h>
@@ -31,41 +34,20 @@
 #define LCD_ROWS 2
 
 
-/* 	
-	cr	- clockwise rotation
-	ccr	- counter clockwise rotation
-	bp	- button pressed
-*/
-enum action{cr, ccr, bp}; 
 
 
 
 
-/**
- * Brief:
- *
- * GPIO status:
- * GPIO4:  input, pulled up, interrupt from rising edge and falling edge
- *
- * Note. These are the default GPIO pins to be used in the example. You can
- * change IO pins in menuconfig.
- *
- *
- */
 
-#define SENSOR1     CONFIG_SENSOR_1
-//#define SENSOR2     CONFIG_GPIO_INPUT_1
-//#define SENSOR3     CONFIG_GPIO_INPUT_2
 
 #define GPIO_DOWN	     25
 #define GPIO_UP			 32
 #define GPIO_OK			 33
-#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_DOWN) | (1ULL<<GPIO_UP) | (1ULL<<GPIO_OK) | (1ULL<<SENSOR1))
+#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_DOWN) | (1ULL<<GPIO_UP) | (1ULL<<GPIO_OK))
 
 /*
- * Let's say, SENSOR1=4, (SENSOR2=5), GPIO_DOWN=35, GPIO_UP=32, GPIO_OK=33
+ * Let's say, GPIO_DOWN=35, GPIO_UP=32, GPIO_OK=33
  * In binary representation,
- * 1ULL<<SENSOR1 is equal to 			0000000000000000000000000000000000010000 and
  * 1ULL<<GPIO_UP is equal to	 		0000000100000000000000000000000000000000 and
  * 1ULL<<GPIO_OK is equal to	        0000001000000000000000000000000000110000 and
  * 1ULL<<GPIO_DOWN is equal to		    0000100000000000000000000000000000110000
@@ -101,10 +83,6 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 			gpio_set_intr_type(GPIO_OK, GPIO_INTR_DISABLE);
     		xQueueSendFromISR(buttons_queue, &gpio_num, NULL);
 			break;
-		case SENSOR1:
-			gpio_set_intr_type(SENSOR1, GPIO_INTR_DISABLE);
-    		xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-			break;
 	}
 }
 
@@ -116,15 +94,6 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 
 
-static void sensor_task(void* arg)
-{
-    uint32_t io_num;
-    for(;;) {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-			ESP_LOGI(TAG, "[sensor task] GPIO[%"PRIu32"] intr, val: %d", io_num, gpio_get_level(io_num));	
-        }
-    }
-}
 
 
 
@@ -132,10 +101,16 @@ void LCD_Display(void* param)
 {
     uint32_t io_num;
 	portBASE_TYPE xStatusReceive;
+	uint8_t state = 1;
 	char menuItem1[] = "Sensors";
 	char menuItem2[] = "Ball valve";
 	char menuItem3[] = "Power";
 	char menuItem4[] = "Errors";
+	char menuItem11[] = "ws1";
+	char menuItem12[] = "ws2";
+	char menuItem13[] = "bs1";
+	char menuItem14[] = "bs2";
+	char menuItem15[] = "bs3";
 	uint8_t change = 1;
 	uint8_t cursor = 1;
 
@@ -154,18 +129,20 @@ void LCD_Display(void* param)
 		if(xStatusReceive == pdPASS){
     		vTaskDelay(150 / portTICK_PERIOD_MS);
 			change = 1;
-			ESP_LOGI(TAG, "[LCD Display] button = %li", io_num);	
 			switch(io_num){
 				case 25: //down
 					gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
+					ESP_LOGI(TAG, "[LCD Display] DOWN pressed");	
 					cursor++;
 					break;
 				case 32: //up
 					gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
+					ESP_LOGI(TAG, "[LCD Display] UP pressed");	
 					cursor--;
 					break;
 				case 33: //OK
 					gpio_set_intr_type(GPIO_OK, GPIO_INTR_NEGEDGE);
+					ESP_LOGI(TAG, "[LCD Display] OK pressed");	
 					break;
 			}
 		}
@@ -176,9 +153,13 @@ void LCD_Display(void* param)
 		if(change){
 			LCD_clearScreen();
 			ESP_LOGI(TAG, "[LCD Display] cursor = %d", cursor);	
+			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 			change = 0;
 		}	
-		switch(cursor){
+		
+
+		ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
+		switch(state){
 			case 1:
 				LCD_setCursor(0, 0);
 				LCD_writeStr(menuItem1);
@@ -186,6 +167,10 @@ void LCD_Display(void* param)
 				LCD_writeStr("<-");
 				LCD_setCursor(0, 1);
 				LCD_writeStr(menuItem2);
+				if(io_num == 25) {
+					LCD_clearScreen();
+					state = 2;
+				}
 				break;
 			case 2:
 				LCD_setCursor(0, 0);
@@ -194,6 +179,14 @@ void LCD_Display(void* param)
 				LCD_writeStr(menuItem2);
 				LCD_setCursor(14, 1);
 				LCD_writeStr("<-");
+				if(io_num == 25){
+				   	state = 3;
+					LCD_clearScreen();
+				}
+				else if (io_num == 32){
+				   	state = 1;
+					LCD_clearScreen();
+				}
 				break;
 			case 3:
 				LCD_setCursor(0, 0);
@@ -202,6 +195,14 @@ void LCD_Display(void* param)
 				LCD_writeStr("<-");
 				LCD_setCursor(0, 1);
 				LCD_writeStr(menuItem4);
+				if(io_num == 25){
+				   	state = 4;
+					LCD_clearScreen();
+				}
+				else if(io_num == 32) {
+					state = 2;
+					LCD_clearScreen();
+				}
 				break;
 			case 4:
 				LCD_setCursor(0, 0);
@@ -210,6 +211,10 @@ void LCD_Display(void* param)
 				LCD_writeStr(menuItem4);
 				LCD_setCursor(14, 1);
 				LCD_writeStr("<-");
+				if(io_num == 32){
+				   	state = 3;
+					LCD_clearScreen();
+				}
 				break;
 		}
 	}
@@ -220,14 +225,6 @@ void app_main(void)
 {
     //zero-initialize the config structure.
     gpio_config_t io_conf = {};
-    //disable interrupt
-    //io_conf.intr_type = GPIO_INTR_DISABLE;
-    //disable pull-down mode
-    //io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    //io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    //gpio_config(&io_conf);
     
 	//interrupt of falling edge
     io_conf.intr_type = GPIO_INTR_NEGEDGE;
@@ -245,7 +242,6 @@ void app_main(void)
     //install gpio isr service
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(SENSOR1, gpio_isr_handler, (void*) SENSOR1);
 	
 	gpio_isr_handler_add(GPIO_DOWN, gpio_isr_handler, (void*) GPIO_DOWN);
     //hook isr handler for specific gpio pin
@@ -257,11 +253,9 @@ void app_main(void)
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));
 
 	//start tasks
-    xTaskCreate(sensor_task, "water sensor task", 2048, NULL, 10, NULL);
     
     LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
     xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
-//	xTaskCreate(ENC, "ENC", 2048, NULL, 11, NULL);
 
     printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
 
