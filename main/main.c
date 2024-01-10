@@ -88,7 +88,53 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 
 
+void DrawMenu(uint8_t state){
+	char menuItem1[] = "Sensors";
+	char menuItem2[] = "Ball valve";
+	char menuItem3[] = "Power";
+	char menuItem4[] = "Errors";
+	char menuItem11[] = "ws1";
+	char menuItem12[] = "ws2";
+	char menuItem13[] = "bs1";
+	char menuItem14[] = "bs2";
+	char menuItem15[] = "bs3";
 
+
+	ESP_LOGI(TAG, "[DrawMenu] state = %d", state);	
+	if(state==1){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem1);
+		LCD_setCursor(14, 0);
+		LCD_writeStr("<-");
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem2);
+	}
+	else if(state==2){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem1);
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem2);
+		LCD_setCursor(14, 1);
+		LCD_writeStr("<-");
+	}
+	else if(state==3){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem3);
+		LCD_setCursor(14, 0);
+		LCD_writeStr("<-");
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem4);
+	}
+	else if(state==4){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem3);
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem4);
+		LCD_setCursor(14, 1);
+		LCD_writeStr("<-");
+	}
+
+}
 
 
 
@@ -102,17 +148,7 @@ void LCD_Display(void* param)
     uint32_t io_num;
 	portBASE_TYPE xStatusReceive;
 	uint8_t state = 1;
-	char menuItem1[] = "Sensors";
-	char menuItem2[] = "Ball valve";
-	char menuItem3[] = "Power";
-	char menuItem4[] = "Errors";
-	char menuItem11[] = "ws1";
-	char menuItem12[] = "ws2";
-	char menuItem13[] = "bs1";
-	char menuItem14[] = "bs2";
-	char menuItem15[] = "bs3";
 	uint8_t change = 1;
-	uint8_t cursor = 1;
 
 
     LCD_home();
@@ -132,13 +168,11 @@ void LCD_Display(void* param)
 			switch(io_num){
 				case 25: //down
 					gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
-					ESP_LOGI(TAG, "[LCD Display] DOWN pressed");	
-					cursor++;
+					ESP_LOGI(TAG, "[LCD Display] DOWN pressed");
 					break;
 				case 32: //up
 					gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
-					ESP_LOGI(TAG, "[LCD Display] UP pressed");	
-					cursor--;
+					ESP_LOGI(TAG, "[LCD Display] UP pressed");
 					break;
 				case 33: //OK
 					gpio_set_intr_type(GPIO_OK, GPIO_INTR_NEGEDGE);
@@ -146,77 +180,46 @@ void LCD_Display(void* param)
 					break;
 			}
 		}
-		if(cursor>4) cursor = 4;
-		else if (cursor<1) cursor = 1;
 
 
 		if(change){
 			LCD_clearScreen();
-			ESP_LOGI(TAG, "[LCD Display] cursor = %d", cursor);	
 			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
+			switch(state){
+				case 1:
+					if(io_num == 25) {
+						state = 2;
+					}
+					DrawMenu(state);
+					break;
+				case 2:
+					DrawMenu(state);
+					if(io_num == 25){
+				   		state = 3;
+					}
+					else if (io_num == 32){
+				   		state = 1;
+					}
+					break;
+				case 3:
+					DrawMenu(state);
+					if(io_num == 25){
+				   		state = 4;
+					}
+					else if(io_num == 32) {
+						state = 2;
+					}
+					break;
+				case 4:
+					DrawMenu(state);
+					if(io_num == 32){
+				   		state = 3;
+					}
+					break;
+			}
 			change = 0;
 		}	
 		
-
-		ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
-		switch(state){
-			case 1:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(menuItem1);
-				LCD_setCursor(14, 0);
-				LCD_writeStr("<-");
-				LCD_setCursor(0, 1);
-				LCD_writeStr(menuItem2);
-				if(io_num == 25) {
-					LCD_clearScreen();
-					state = 2;
-				}
-				break;
-			case 2:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(menuItem1);
-				LCD_setCursor(0, 1);
-				LCD_writeStr(menuItem2);
-				LCD_setCursor(14, 1);
-				LCD_writeStr("<-");
-				if(io_num == 25){
-				   	state = 3;
-					LCD_clearScreen();
-				}
-				else if (io_num == 32){
-				   	state = 1;
-					LCD_clearScreen();
-				}
-				break;
-			case 3:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(menuItem3);
-				LCD_setCursor(14, 0);
-				LCD_writeStr("<-");
-				LCD_setCursor(0, 1);
-				LCD_writeStr(menuItem4);
-				if(io_num == 25){
-				   	state = 4;
-					LCD_clearScreen();
-				}
-				else if(io_num == 32) {
-					state = 2;
-					LCD_clearScreen();
-				}
-				break;
-			case 4:
-				LCD_setCursor(0, 0);
-				LCD_writeStr(menuItem3);
-				LCD_setCursor(0, 1);
-				LCD_writeStr(menuItem4);
-				LCD_setCursor(14, 1);
-				LCD_writeStr("<-");
-				if(io_num == 32){
-				   	state = 3;
-					LCD_clearScreen();
-				}
-				break;
-		}
 	}
 }
 
