@@ -93,8 +93,8 @@ void DrawMenu(uint8_t state){
 	char menuItem2[] = "Ball valve";
 	char menuItem3[] = "Power";
 	char menuItem4[] = "Errors";
-	char menuItem11[] = "ws1";
-	char menuItem12[] = "ws2";
+	char menuItem11[] = "wired sensors";
+	char menuItem12[] = "ble sensors";
 	char menuItem13[] = "bs1";
 	char menuItem14[] = "bs2";
 	char menuItem15[] = "bs3";
@@ -130,6 +130,22 @@ void DrawMenu(uint8_t state){
 		LCD_writeStr(menuItem3);
 		LCD_setCursor(0, 1);
 		LCD_writeStr(menuItem4);
+		LCD_setCursor(14, 1);
+		LCD_writeStr("<-");
+	}
+	else if(state==11){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem11);
+		LCD_setCursor(14, 0);
+		LCD_writeStr("<-");
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem12);
+	}
+	else if(state==12){
+		LCD_setCursor(0, 0);
+		LCD_writeStr(menuItem11);
+		LCD_setCursor(0, 1);
+		LCD_writeStr(menuItem12);
 		LCD_setCursor(14, 1);
 		LCD_writeStr("<-");
 	}
@@ -190,6 +206,9 @@ void LCD_Display(void* param)
 					if(io_num == 25) {
 						state = 2;
 					}
+					else if(io_num == 33){
+						state = 11;
+					}
 					DrawMenu(state);
 					break;
 				case 2:
@@ -213,6 +232,21 @@ void LCD_Display(void* param)
 				case 4:
 					if(io_num == 32){
 				   		state = 3;
+					}
+					DrawMenu(state);
+					break;
+				case 11:
+					if(io_num == 25){
+				   		state = 12;
+					}/*
+					else if(io_num == 32){
+
+					}*/
+					DrawMenu(state);
+					break;
+				case 12:
+					if(io_num == 32){
+						state = 11;
 					}
 					DrawMenu(state);
 					break;
