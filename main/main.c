@@ -163,7 +163,7 @@ void LCD_Display(void* param)
 		io_num = 0;
 		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
 		if(xStatusReceive == pdPASS){
-    		vTaskDelay(150 / portTICK_PERIOD_MS);
+    		vTaskDelay(250 / portTICK_PERIOD_MS);
 			change = 1;
 			switch(io_num){
 				case 25: //down
@@ -193,28 +193,28 @@ void LCD_Display(void* param)
 					DrawMenu(state);
 					break;
 				case 2:
-					DrawMenu(state);
 					if(io_num == 25){
 				   		state = 3;
 					}
 					else if (io_num == 32){
 				   		state = 1;
 					}
+					DrawMenu(state);
 					break;
 				case 3:
-					DrawMenu(state);
 					if(io_num == 25){
 				   		state = 4;
 					}
 					else if(io_num == 32) {
 						state = 2;
 					}
+					DrawMenu(state);
 					break;
 				case 4:
-					DrawMenu(state);
 					if(io_num == 32){
 				   		state = 3;
 					}
+					DrawMenu(state);
 					break;
 			}
 			change = 0;
