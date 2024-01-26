@@ -43,10 +43,11 @@
 #define GPIO_DOWN	     25
 #define GPIO_UP			 32
 #define GPIO_OK			 33
-#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_DOWN) | (1ULL<<GPIO_UP) | (1ULL<<GPIO_OK))
+#define GPIO_ESC		 26
+#define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_DOWN) | (1ULL<<GPIO_UP) | (1ULL<<GPIO_OK) | (1ULL<<GPIO_ESC))
 
 /*
- * Let's say, GPIO_DOWN=35, GPIO_UP=32, GPIO_OK=33
+ * Let's say, GPIO_DOWN=35, GPIO_UP=32, GPIO_OK=33, GPIO_ESC=26
  * In binary representation,
  * 1ULL<<GPIO_UP is equal to	 		0000000100000000000000000000000000000000 and
  * 1ULL<<GPIO_OK is equal to	        0000001000000000000000000000000000110000 and
@@ -81,6 +82,10 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 			break;
 		case GPIO_OK:
 			gpio_set_intr_type(GPIO_OK, GPIO_INTR_DISABLE);
+    		xQueueSendFromISR(buttons_queue, &gpio_num, NULL);
+			break;
+		case GPIO_ESC:
+			gpio_set_intr_type(GPIO_ESC, GPIO_INTR_DISABLE);
     		xQueueSendFromISR(buttons_queue, &gpio_num, NULL);
 			break;
 	}
@@ -186,6 +191,10 @@ void LCD_Display(void* param)
 					gpio_set_intr_type(GPIO_DOWN, GPIO_INTR_NEGEDGE);
 					ESP_LOGI(TAG, "[LCD Display] DOWN pressed");
 					break;
+				case 26: //esc
+					gpio_set_intr_type(GPIO_ESC, GPIO_INTR_NEGEDGE);
+					ESP_LOGI(TAG, "[LCD Display] ESC pressed");
+					break;
 				case 32: //up
 					gpio_set_intr_type(GPIO_UP, GPIO_INTR_NEGEDGE);
 					ESP_LOGI(TAG, "[LCD Display] UP pressed");
@@ -238,15 +247,18 @@ void LCD_Display(void* param)
 				case 11:
 					if(io_num == 25){
 				   		state = 12;
-					}/*
-					else if(io_num == 32){
-
-					}*/
+					}
+					else if(io_num == 26){
+						state = 1;
+					}
 					DrawMenu(state);
 					break;
 				case 12:
 					if(io_num == 32){
 						state = 11;
+					}
+					else if(io_num == 26){
+						state = 1;
 					}
 					DrawMenu(state);
 					break;
@@ -270,7 +282,7 @@ void app_main(void)
     //set as input mode
     io_conf.mode = GPIO_MODE_INPUT;
     //disable pull-up mode
-    io_conf.pull_up_en = 1;
+    io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
 
     //change gpio interrupt type for one pin
@@ -285,6 +297,7 @@ void app_main(void)
 	gpio_isr_handler_add(GPIO_UP, gpio_isr_handler, (void*) GPIO_UP);
 	//hook isr handler for specific gpio pin
 	gpio_isr_handler_add(GPIO_OK, gpio_isr_handler, (void*) GPIO_OK);
+	gpio_isr_handler_add(GPIO_ESC, gpio_isr_handler, (void*) GPIO_ESC);
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));

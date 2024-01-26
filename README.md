@@ -20,7 +20,8 @@
 | CONFIG_SENSOR2               | input     | pulled up (external), interrupt from falling edge      |
 
 
-### Configure the project
+### Menu
+![Image alt](./img/menu_state.jpg)
 
 ### Build and Flash
 
