@@ -23,27 +23,26 @@
 #include <driver/i2c.h>
 #include <esp_log.h>
 #include "sdkconfig.h"
-#include "HD44780.h"
+//#include "HD44780.h"
+/* Component includes */
+#include "esp32-i2c-hd44780-pcf8574.h"
+
+#define I2C_MASTER_SDA_IO	CONFIG_I2C_MASTER_SDA 
+#define I2C_MASTER_SCL_IO 	CONFIG_I2C_MASTER_SCL
+#define I2C_MASTER_FREQUENCY	CONFIG_I2C_MASTER_FREQUENCY
+
+#define I2C_LCD_DEVICE_ADDRESS 0x3F
+#define LCD_COLS 	CONFIG_LCD_COLS
+#define LCD_ROWS 	CONFIG_LCD_ROWS
 
 
 
-#define LCD_ADDR 0x3F
-#define SDA_PIN  18
-#define SCL_PIN  19
-#define LCD_COLS 16
-#define LCD_ROWS 2
 
 
-
-
-
-
-
-
-#define GPIO_DOWN	     25
-#define GPIO_UP			 32
-#define GPIO_OK			 33
-#define GPIO_ESC		 26
+#define GPIO_DOWN		CONFIG_GPIO_DOWN
+#define GPIO_UP			CONFIG_GPIO_UP
+#define GPIO_OK			CONFIG_GPIO_OK
+#define GPIO_ESC		CONFIG_GPIO_ESC	
 #define GPIO_INPUT_PIN_SEL  ((1ULL<<GPIO_DOWN) | (1ULL<<GPIO_UP) | (1ULL<<GPIO_OK) | (1ULL<<GPIO_ESC))
 
 /*
@@ -63,6 +62,7 @@ void LCD_Display(void* param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
+static QueueHandle_t i2c_data_queue = NULL;
 static QueueHandle_t buttons_queue = NULL;
 
 
@@ -91,72 +91,7 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 	}
 }
 
-
-
-void DrawMenu(uint8_t state){
-	char menuItem1[] = "Sensors";
-	char menuItem2[] = "Ball valve";
-	char menuItem3[] = "Power";
-	char menuItem4[] = "Errors";
-	char menuItem11[] = "wired sensors";
-	char menuItem12[] = "ble sensors";
-	char menuItem13[] = "bs1";
-	char menuItem14[] = "bs2";
-	char menuItem15[] = "bs3";
-
-
-	ESP_LOGI(TAG, "[DrawMenu] state = %d", state);	
-	if(state==1){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem1);
-		LCD_setCursor(14, 0);
-		LCD_writeStr("<-");
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem2);
-	}
-	else if(state==2){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem1);
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem2);
-		LCD_setCursor(14, 1);
-		LCD_writeStr("<-");
-	}
-	else if(state==3){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem3);
-		LCD_setCursor(14, 0);
-		LCD_writeStr("<-");
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem4);
-	}
-	else if(state==4){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem3);
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem4);
-		LCD_setCursor(14, 1);
-		LCD_writeStr("<-");
-	}
-	else if(state==11){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem11);
-		LCD_setCursor(14, 0);
-		LCD_writeStr("<-");
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem12);
-	}
-	else if(state==12){
-		LCD_setCursor(0, 0);
-		LCD_writeStr(menuItem11);
-		LCD_setCursor(0, 1);
-		LCD_writeStr(menuItem12);
-		LCD_setCursor(14, 1);
-		LCD_writeStr("<-");
-	}
-
-}
-
+	
 
 
 
@@ -171,15 +106,60 @@ void LCD_Display(void* param)
 	uint8_t state = 1;
 	uint8_t change = 1;
 
+	char menuItem1[] = "Sensors";
+	char menuItem2[] = "Ball valve";
+	char menuItem3[] = "Power";
+	char menuItem4[] = "Errors";
+	char menuItem11[] = "wired sensors";
+	char menuItem12[] = "ble sensors";
+	char menuItem13[] = "bs1";
+	char menuItem14[] = "bs2";
+	char arrow[] = "<-";
 
-    LCD_home();
-    LCD_clearScreen();
-    LCD_writeStr("--- 16x2 LCD ---");
-    LCD_setCursor(0, 1);
-    LCD_writeStr("leakage protect");
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
-    LCD_home();
-    LCD_clearScreen();
+/* I2C Device Configuration {{{ */
+	/* 1. Configure the i2c master bus */
+	i2c_master_bus_config_t i2c_mst_config = {
+    		.clk_source = I2C_CLK_SRC_DEFAULT,
+    		.i2c_port = -1,
+    		.scl_io_num = I2C_MASTER_SCL_IO,
+    		.sda_io_num = I2C_MASTER_SDA_IO,
+    		.glitch_ignore_cnt = 7,
+		.flags.enable_internal_pullup = false,
+	};
+
+	i2c_master_bus_handle_t bus_handle;
+
+	ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
+	
+	/* 2. Configure the i2c LCD peripheral */
+	i2c_device_config_t lcd_dev_cfg = {
+    		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    		.device_address = I2C_LCD_DEVICE_ADDRESS,
+    		.scl_speed_hz = I2C_MASTER_FREQUENCY,
+	};
+
+	i2c_master_dev_handle_t lcd_handle;
+	ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &lcd_dev_cfg, &lcd_handle));
+	
+
+	/* printf("probing for i2c device..."); */
+	/* ESP_ERROR_CHECK(i2c_master_probe(bus_handle, 0x27, -1)); */
+	/* printf(" SUCCESS!\n"); */
+
+	/* 3a. Perform device specific initialization */
+	struct esp_i2c_hd44780_pcf8574 i2c_lcd = esp_i2c_hd44780_pcf8574_init(16, 2, -1, LCD_BACKLIGHT);
+	i2c_lcd.i2c_handle = &lcd_handle;
+
+	/* 3b. Perform the necessary startup instructions for our LCD. */
+	esp_i2c_hd44780_pcf8574_begin(&i2c_lcd);
+
+    	vTaskDelay(100 / portTICK_PERIOD_MS); 
+
+
+	esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
+	esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+
+
     while (true) {
 		io_num = 0;
 		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
@@ -208,59 +188,241 @@ void LCD_Display(void* param)
 
 
 		if(change){
-			LCD_clearScreen();
+//			LCD_clearScreen();
+			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd); 
 			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 			switch(state){
 				case 1:
 					if(io_num == 25) {
 						state = 2;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						//LCD_writeStr(menuItem1);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						//LCD_writeStr(menuItem2);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+
+//						LCD_setCursor(14, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+//						LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					else if(io_num == 33){
 						state = 11;
+//						LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem11);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
+						
+//						LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem12);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
 					}
-					DrawMenu(state);
 					break;
 				case 2:
 					if(io_num == 25){
 				   		state = 3;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem3);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
+						
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						//LCD_writeStr(menuItem4);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
 					}
 					else if (io_num == 32){
 				   		state = 1;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						
+//						LCD_writeStr(menuItem1);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem2);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
-					DrawMenu(state);
 					break;
 				case 3:
 					if(io_num == 25){
 				   		state = 4;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						
+						//LCD_writeStr(menuItem3);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem4);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
+						
+						
+						//LCD_setCursor(14, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					else if(io_num == 32) {
 						state = 2;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem1);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem2);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+						
+						//LCD_setCursor(14, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
-					DrawMenu(state);
 					break;
 				case 4:
 					if(io_num == 32){
 				   		state = 3;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem3);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						//LCD_writeStr(menuItem4);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
 					}
-					DrawMenu(state);
 					break;
 				case 11:
 					if(io_num == 25){
 				   		state = 12;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem11);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem12);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
+						
+						//LCD_setCursor(14, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					else if(io_num == 26){
 						state = 1;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+//						LCD_writeStr(menuItem1);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem2);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
-					DrawMenu(state);
 					break;
 				case 12:
 					if(io_num == 32){
 						state = 11;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem11);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						
+						//LCD_writeStr(menuItem12);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
 					}
 					else if(io_num == 26){
 						state = 1;
+						//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						
+						//LCD_writeStr(menuItem1);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						
+						//LCD_setCursor(14, 0);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						
+						//LCD_writeStr("<-");
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						
+					
+						//LCD_setCursor(0, 1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						//LCD_writeStr(menuItem2);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
-					DrawMenu(state);
 					break;
 			}
 			change = 0;
@@ -301,13 +463,15 @@ void app_main(void)
     //create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));
+	i2c_data_queue = xQueueCreate(10, sizeof(uint32_t));
+
+
+
 
 	//start tasks
+    //LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+    xTaskCreate(LCD_Display, "LCD Display Task", 3048, NULL, 5, NULL);
     
-    LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
-    xTaskCreate(LCD_Display, "LCD Display Task", 2048, NULL, 5, NULL);
-
     printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
-
 
 }

@@ -2,34 +2,72 @@ menu "Leakage protection Configuration"
 
     orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
 
-    config OPEN_VALVE
-        int "GPIO output"
-        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
-        default 8 if IDF_TARGET_ESP32C2 || IDF_TARGET_ESP32H2
-        default 23
-        help
-            GPIO pin number to be used as GPIO_OUTPUT_IO_0.
 
-    config CLOSE_VALVE
-        int "GPIO output" 
-        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
-        default 9 if IDF_TARGET_ESP32C2 || IDF_TARGET_ESP32H2
-        default 22
-        help
-            GPIO pin number to be used as GPIO_OUTPUT_IO_1.
-
-    config SENSOR_1
-		int "GPIO input pin"
+    config GPIO_DOWN
+	int "GPIO input pin"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
-        default 4
+        default 25
         help
-            GPIO pin number to be used as SENSOR1.
+            GPIO pin number to be used as button DOWN.
 
-    config SENSOR_2
+
+    config GPIO_UP
         int "GPIO input pin"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
-        default 5
+        default 32
         help
-            GPIO pin number to be used as SENSOR2.
+            GPIO pin number to be used as button UP.
+
+
+    config GPIO_OK
+	int "GPIO input pin"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
+	default 33
+	help
+	    GPIO pin number to be used as button OK.
+
+
+    config GPIO_ESC
+	int "GPIO input pin"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
+        default 26
+        help
+            GPIO pin number to be used as button ESC.
+
+    menu "I2C Master"
+        config I2C_MASTER_SCL
+            int "SCL GPIO Num"
+            default 19
+            help
+                GPIO number for I2C Master clock line.
+
+        config I2C_MASTER_SDA
+            int "SDA GPIO Num"
+            default 18
+            help
+                GPIO number for I2C Master data line.
+
+        config I2C_MASTER_FREQUENCY
+            int "Master Frequency"
+            default 100000
+            help
+                I2C Speed of Master device.
+    endmenu
+
+    menu "LCD device"
+	config LCD_COLS
+		int "HD44780 cols"
+		default 16
+		help
+		   column number
+
+	config LCD_ROWS
+		int "HD44780 rows"
+		default 2
+		help
+		   rows number
+
+    endmenu
+ 
 
 endmenu

@@ -7,6 +7,8 @@
 #include "rom/ets_sys.h"
 #include <esp_log.h>
 
+#define LCD_addr 0x34
+#define LCD_rows 1
 // LCD module defines
 #define LCD_LINEONE             0x00        // start of line 1
 #define LCD_LINETWO             0x40        // start of line 2
@@ -42,40 +44,14 @@
 // P7 -> D7
 
 static char tag[] = "LCD Driver";
-static uint8_t LCD_addr;
-static uint8_t SDA_pin;
-static uint8_t SCL_pin;
-static uint8_t LCD_cols;
-static uint8_t LCD_rows;
 
 static void LCD_writeNibble(uint8_t nibble, uint8_t mode);
 static void LCD_writeByte(uint8_t data, uint8_t mode);
 static void LCD_pulseEnable(uint8_t nibble);
 
-static esp_err_t I2C_init(void)
-{
-    i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = SDA_pin,
-        .scl_io_num = SCL_pin,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 100000
-    };
-	i2c_param_config(I2C_NUM_0, &conf);
-	i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0);
-    return ESP_OK;
-}
 
 void LCD_init(uint8_t addr, uint8_t dataPin, uint8_t clockPin, uint8_t cols, uint8_t rows)
 {
-    LCD_addr = addr;
-    SDA_pin = dataPin;
-    SCL_pin = clockPin;
-    LCD_cols = cols;
-    LCD_rows = rows;
-    I2C_init();
-    vTaskDelay(100 / portTICK_PERIOD_MS);                                 // Initial 40 mSec delay
 
     // Reset the LCD controller
     LCD_writeNibble(LCD_FUNCTION_RESET, LCD_COMMAND);                   // First part of reset sequence
