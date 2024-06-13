@@ -104,7 +104,7 @@ void LCD_Display(void* param)
     uint32_t io_num;
 	portBASE_TYPE xStatusReceive;
 	uint8_t state = 1;
-	uint8_t change = 1;
+	uint8_t change = 0;
 
 	char menuItem1[] = "Sensors";
 	char menuItem2[] = "Ball valve";
@@ -155,16 +155,22 @@ void LCD_Display(void* param)
 
     	vTaskDelay(100 / portTICK_PERIOD_MS); 
 
-
+	
+	/* state 1 */
 	esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
 	esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 
 
     while (true) {
 		io_num = 0;
 		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
 		if(xStatusReceive == pdPASS){
-    		vTaskDelay(250 / portTICK_PERIOD_MS);
+    		vTaskDelay(200 / portTICK_PERIOD_MS);
 			change = 1;
 			switch(io_num){
 				case 25: //down
@@ -188,244 +194,156 @@ void LCD_Display(void* param)
 
 
 		if(change){
-//			LCD_clearScreen();
 			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd); 
-			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 			switch(state){
 				case 1:
 					if(io_num == 25) {
 						state = 2;
-						//LCD_setCursor(0, 0);
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						//LCD_writeStr(menuItem1);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-
-						//LCD_setCursor(0, 1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						//LCD_writeStr(menuItem2);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-
-//						LCD_setCursor(14, 1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-//						LCD_writeStr("<-");
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);		//LCD_setCursor(0, 0);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);	//LCD_writeStr(menuItem1)
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);	//LCD_setCursor(0, 1)
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);	//LCD_writeStr(menuItem2)
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);	//LCD_setCursor(14, 1)
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);	//LCD_writeStr("<-");
 					}
 					else if(io_num == 33){
 						state = 11;
-//						LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem11);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						
-//						LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem12);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
+					}
+					else {
+
+						esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
 					break;
 				case 2:
 					if(io_num == 25){
 				   		state = 3;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem3);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						//LCD_writeStr(menuItem4);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
 					}
 					else if (io_num == 32){
 				   		state = 1;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						
-//						LCD_writeStr(menuItem1);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem2);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
 					break;
 				case 3:
 					if(io_num == 25){
 				   		state = 4;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						
-						//LCD_writeStr(menuItem3);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem4);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
-						
-						
-						//LCD_setCursor(14, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					else if(io_num == 32) {
 						state = 2;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem1);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem2);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-						
-						//LCD_setCursor(14, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					break;
 				case 4:
 					if(io_num == 32){
 				   		state = 3;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem3);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						//LCD_writeStr(menuItem4);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
+					}
+					else {
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					break;
 				case 11:
 					if(io_num == 25){
 				   		state = 12;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem11);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem12);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
-						
-						//LCD_setCursor(14, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					else if(io_num == 26){
 						state = 1;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-//						LCD_writeStr(menuItem1);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem2);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+					}
+					else {
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
 					}
 					break;
 				case 12:
 					if(io_num == 32){
 						state = 11;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem11);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						
-						//LCD_writeStr(menuItem12);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
 					}
 					else if(io_num == 26){
 						state = 1;
-						//LCD_setCursor(0, 0);
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						
-						//LCD_writeStr(menuItem1);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						
-						//LCD_setCursor(14, 0);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						
-						//LCD_writeStr("<-");
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						
-					
-						//LCD_setCursor(0, 1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						//LCD_writeStr(menuItem2);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+					}
+					else {
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
 					}
 					break;
 			}
 			change = 0;
+			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 		}	
 		
 	}

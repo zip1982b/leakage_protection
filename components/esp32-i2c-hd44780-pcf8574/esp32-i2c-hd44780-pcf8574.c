@@ -316,9 +316,9 @@ void esp_i2c_hd44780_pcf8574_send_char(struct esp_i2c_hd44780_pcf8574 *esp_i2c_l
 void esp_i2c_hd44780_pcf8574_send_str(struct esp_i2c_hd44780_pcf8574 *esp_i2c_lcd, char *str) {
 	uint8_t l = 0;
 	l = strlen(str);
-	for (int i = 0; i <= l; i++) {
+	for (uint8_t i = 0; i <= l-1; i++) {
 		esp_i2c_hd44780_pcf8574_send_char(esp_i2c_lcd, str[i]);
-		vTaskDelay(pdMS_TO_TICKS(10));
+		vTaskDelay(pdMS_TO_TICKS(5));
 	}
 }
 
