@@ -54,7 +54,16 @@
  * */
 #define ESP_INTR_FLAG_DEFAULT 0
 
-
+/* menu */
+	char menuItem1[] = "Sensors";
+	char menuItem2[] = "Ball valve";
+	char menuItem3[] = "Power";
+	char menuItem4[] = "Errors";
+	char menuItem11[] = "wired sensors";
+	char menuItem12[] = "ble sensors";
+	char menuItem13[] = "bs1";
+	char menuItem14[] = "bs2";
+	char arrow[] = "<-";
 
 static const char* TAG = "main";
 
@@ -105,16 +114,7 @@ void LCD_Display(void* param)
 	portBASE_TYPE xStatusReceive;
 	uint8_t state = 1;
 	uint8_t change = 0;
-
-	char menuItem1[] = "Sensors";
-	char menuItem2[] = "Ball valve";
-	char menuItem3[] = "Power";
-	char menuItem4[] = "Errors";
-	char menuItem11[] = "wired sensors";
-	char menuItem12[] = "ble sensors";
-	char menuItem13[] = "bs1";
-	char menuItem14[] = "bs2";
-	char arrow[] = "<-";
+	uint8_t counter = 0;
 
 /* I2C Device Configuration {{{ */
 	/* 1. Configure the i2c master bus */
@@ -147,7 +147,7 @@ void LCD_Display(void* param)
 	/* printf(" SUCCESS!\n"); */
 
 	/* 3a. Perform device specific initialization */
-	struct esp_i2c_hd44780_pcf8574 i2c_lcd = esp_i2c_hd44780_pcf8574_init(16, 2, -1, LCD_BACKLIGHT);
+	struct esp_i2c_hd44780_pcf8574 i2c_lcd = esp_i2c_hd44780_pcf8574_init(16, 2, -1, LCD_NOBACKLIGHT);
 	i2c_lcd.i2c_handle = &lcd_handle;
 
 	/* 3b. Perform the necessary startup instructions for our LCD. */
@@ -160,9 +160,9 @@ void LCD_Display(void* param)
 	esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
 	esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
 	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);//14 символ в первой строке
 	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);//начало второй строки
 	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 
 
@@ -194,6 +194,7 @@ void LCD_Display(void* param)
 
 
 		if(change){
+			i2c_lcd.backlight = LCD_BACKLIGHT;
 			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd); 
 			switch(state){
 				case 1:
@@ -210,14 +211,13 @@ void LCD_Display(void* param)
 						state = 11;
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);//14 символ в первой строке
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40); //начало второй строки
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
 					}
 					else {
-
-						esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
+						//i2c_lcd.backlight = LCD_BACKLIGHT;
 						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
@@ -245,6 +245,14 @@ void LCD_Display(void* param)
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 					}
+					else {
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+					}
 					break;
 				case 3:
 					if(io_num == 25){
@@ -264,6 +272,15 @@ void LCD_Display(void* param)
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
 						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
 						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+					}
+					else {
+					
+						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
+						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
 					}
 					break;
 				case 4:
@@ -342,9 +359,18 @@ void LCD_Display(void* param)
 					}
 					break;
 			}
+
 			change = 0;
 			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
-		}	
+		}
+		else {
+			counter = counter + 1;
+			if(counter == 200){
+				counter = 0;
+				i2c_lcd.backlight = LCD_NOBACKLIGHT;
+				esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+			}
+		}
 		
 	}
 }
@@ -385,11 +411,8 @@ void app_main(void)
 
 
 
-
-	//start tasks
-    //LCD_init(LCD_ADDR, SDA_PIN, SCL_PIN, LCD_COLS, LCD_ROWS);
+/***** start tasks *************************/
     xTaskCreate(LCD_Display, "LCD Display Task", 3048, NULL, 5, NULL);
-    
     printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
 
 }
