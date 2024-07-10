@@ -297,7 +297,9 @@ void LCD_Display(void* param)
 			i2c_lcd.backlight = LCD_BACKLIGHT;
 			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
 			state_backlight = 1; 
-			gptimer_set_raw_count(gptimer, 1);
+			if(timer_on){
+				gptimer_set_raw_count(gptimer, 1);
+			}
 			switch(state){
 				case 1:
 					if(io_num == 25) {
