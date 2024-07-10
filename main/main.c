@@ -3,7 +3,7 @@
  * Задачи:
  *  - отображение на дисплее меню по управлению устройством.
  *  - связь с беспроводными датчиками по BLE.
- *  - обмен данными с главным контроллером по i2c.
+ *  - обмен данными с главным контроллером (stm32f103) по i2c.
  * 
  * Состав:
  *  дисплей HD44780 подключенный по i2c
@@ -17,7 +17,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "driver/gpio.h"
+#include "driver/gptimer.h"
 
 
 #include <driver/i2c.h>
@@ -54,7 +56,7 @@
  * */
 #define ESP_INTR_FLAG_DEFAULT 0
 
-/* menu */
+/* LCD menu */
 	char menuItem1[] = "Sensors";
 	char menuItem2[] = "Ball valve";
 	char menuItem3[] = "Power";
@@ -67,14 +69,17 @@
 
 static const char* TAG = "main";
 
+void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd);
 void LCD_Display(void* param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
 static QueueHandle_t i2c_data_queue = NULL;
 static QueueHandle_t buttons_queue = NULL;
+static SemaphoreHandle_t xSemaphore = NULL;
 
 
+uint8_t timer_on = 0;
 
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
@@ -102,21 +107,87 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 	
 
+static void IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    gptimer_stop(timer);
+    timer_on = 0;
+    xSemaphoreGiveFromISR(xSemaphore, NULL);
+}
 
 
 
+void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd){
 
+
+	switch(state){
+		case 1:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem1);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0xd);//14 символ в первой строке
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);//начало второй строки
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem2);
+			break;
+		case 2:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);		//LCD_setCursor(0, 0);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem1);	//LCD_writeStr(menuItem1)
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);	//LCD_setCursor(0, 1)
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem2);	//LCD_writeStr(menuItem2)
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);	//LCD_setCursor(14, 1)
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);	//LCD_writeStr("<-");
+			break;
+		case 3:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem3);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0xd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem4);
+			break;
+		case 4:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem3);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem4);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
+			break;
+		case 11:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem11);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0xd);//14 символ в первой строке
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40); //начало второй строки
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem12);
+			break;
+		case 12:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem11);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem12);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
+			break;
+	}
+
+}
 
 
 void LCD_Display(void* param)
 {
-    uint32_t io_num;
+    	uint32_t io_num;
 	portBASE_TYPE xStatusReceive;
 	uint8_t state = 1;
+	uint8_t state_backlight = 0;
 	uint8_t change = 0;
-	uint8_t counter = 0;
 
-/* I2C Device Configuration {{{ */
+	/***** I2C Device Configuration  *****/
 	/* 1. Configure the i2c master bus */
 	i2c_master_bus_config_t i2c_mst_config = {
     		.clk_source = I2C_CLK_SRC_DEFAULT,
@@ -153,24 +224,53 @@ void LCD_Display(void* param)
 	/* 3b. Perform the necessary startup instructions for our LCD. */
 	esp_i2c_hd44780_pcf8574_begin(&i2c_lcd);
 
+	/***GPTimer settings***/
+	
+    	ESP_LOGI(TAG, "Create timer handle");
+    	gptimer_handle_t gptimer = NULL;
+    	gptimer_config_t timer_config = {
+        	.clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        	.direction = GPTIMER_COUNT_UP,
+        	.resolution_hz = 1000000, // 1MHz, 1 tick=1us
+    	};
+    	ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
+    
+    	gptimer_event_callbacks_t cbs = {
+        	.on_alarm = timer_on_alarm_cb,
+    	};
+    	ESP_ERROR_CHECK(gptimer_register_event_callbacks(gptimer, &cbs, NULL));
+
+    	ESP_LOGI(TAG, "Enable timer");
+    	ESP_ERROR_CHECK(gptimer_enable(gptimer));
+
+    	ESP_LOGI(TAG, "Start timer, stop it at alarm event");
+    	gptimer_alarm_config_t alarm_config = {
+        	.reload_count = 0,
+		.alarm_count = 5000000, // period = 5 sec
+		.flags.auto_reload_on_alarm = true, // enable auto-reload
+    	};
+    	ESP_ERROR_CHECK(gptimer_set_alarm_action(gptimer, &alarm_config));
+
+
     	vTaskDelay(100 / portTICK_PERIOD_MS); 
 
 	
 	/* state 1 */
-	esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
-	esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);//14 символ в первой строке
-	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-	esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);//начало второй строки
-	esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-
+	state = 1;
+	LCD_Menu(state, &i2c_lcd);
 
     while (true) {
 		io_num = 0;
+		if(xSemaphoreTake(xSemaphore, 300/portTICK_PERIOD_MS))
+     		{
+			ESP_LOGI(TAG, "[LCD Display] semathore take");	
+			i2c_lcd.backlight = LCD_NOBACKLIGHT;
+			esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+			state_backlight = 0;
+     		}
 		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
 		if(xStatusReceive == pdPASS){
-    		vTaskDelay(200 / portTICK_PERIOD_MS);
+    			vTaskDelay(500 / portTICK_PERIOD_MS);
 			change = 1;
 			switch(io_num){
 				case 25: //down
@@ -195,168 +295,71 @@ void LCD_Display(void* param)
 
 		if(change){
 			i2c_lcd.backlight = LCD_BACKLIGHT;
-			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd); 
+			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
+			state_backlight = 1; 
+			gptimer_set_raw_count(gptimer, 1);
 			switch(state){
 				case 1:
 					if(io_num == 25) {
 						state = 2;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);		//LCD_setCursor(0, 0);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);	//LCD_writeStr(menuItem1)
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);	//LCD_setCursor(0, 1)
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);	//LCD_writeStr(menuItem2)
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);	//LCD_setCursor(14, 1)
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);	//LCD_writeStr("<-");
+						LCD_Menu(state, &i2c_lcd);
 					}
 					else if(io_num == 33){
 						state = 11;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);//14 символ в первой строке
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40); //начало второй строки
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-						//i2c_lcd.backlight = LCD_BACKLIGHT;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 				case 2:
 					if(io_num == 25){
 				   		state = 3;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
+						LCD_Menu(state, &i2c_lcd);
 					}
 					else if (io_num == 32){
 				   		state = 1;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 				case 3:
 					if(io_num == 25){
 				   		state = 4;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						LCD_Menu(state, &i2c_lcd);
 					}
 					else if(io_num == 32) {
 						state = 2;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-					
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 				case 4:
 					if(io_num == 32){
 				   		state = 3;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem3);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem4);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 				case 11:
 					if(io_num == 25){
 				   		state = 12;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
+						LCD_Menu(state, &i2c_lcd);
 					}
 					else if(io_num == 26){
 						state = 1;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 				case 12:
 					if(io_num == 32){
 						state = 11;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
+						LCD_Menu(state, &i2c_lcd);
 					}
 					else if(io_num == 26){
 						state = 1;
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem1);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0xd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem2);
+						LCD_Menu(state, &i2c_lcd);
 					}
-					else {
-						esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem11);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x40);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, menuItem12);
-						esp_i2c_hd44780_pcf8574_set_cursor_pos(&i2c_lcd, 0x4d);
-						esp_i2c_hd44780_pcf8574_send_str(&i2c_lcd, arrow);
-					}
+					else LCD_Menu(state, &i2c_lcd);
 					break;
 			}
 
@@ -364,15 +367,14 @@ void LCD_Display(void* param)
 			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 		}
 		else {
-			counter = counter + 1;
-			if(counter == 200){
-				counter = 0;
-				i2c_lcd.backlight = LCD_NOBACKLIGHT;
-				esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+			//ESP_LOGI(TAG, "Timer_on = %d", timer_on);
+			if(state_backlight && (timer_on == 0)){ //если подсветка включена и таймер ещё не запущен, тогда вкл таймер 
+    				ESP_ERROR_CHECK(gptimer_start(gptimer));//начать счёт 5 секунд
+				ESP_LOGI(TAG, "[LCD Display] timer start");	
+				timer_on = 1;
 			}
 		}
-		
-	}
+	}	
 }
 
 
@@ -396,20 +398,21 @@ void app_main(void)
 
     //install gpio isr service
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    //hook isr handler for specific gpio pin
-	
+
+    
+/***hook isr handler for specific gpio pin***/
 	gpio_isr_handler_add(GPIO_DOWN, gpio_isr_handler, (void*) GPIO_DOWN);
-    //hook isr handler for specific gpio pin
 	gpio_isr_handler_add(GPIO_UP, gpio_isr_handler, (void*) GPIO_UP);
-	//hook isr handler for specific gpio pin
 	gpio_isr_handler_add(GPIO_OK, gpio_isr_handler, (void*) GPIO_OK);
 	gpio_isr_handler_add(GPIO_ESC, gpio_isr_handler, (void*) GPIO_ESC);
-    //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+
+/***create a queue to handle gpio event from isr***/
+    	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));
 	i2c_data_queue = xQueueCreate(10, sizeof(uint32_t));
 
 
+    xSemaphore = xSemaphoreCreateBinary();
 
 /***** start tasks *************************/
     xTaskCreate(LCD_Display, "LCD Display Task", 3048, NULL, 5, NULL);

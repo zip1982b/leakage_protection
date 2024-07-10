@@ -10,8 +10,7 @@
 #include "esp32-i2c-hd44780-pcf8574.h"
 
 
-struct esp_i2c_hd44780_pcf8574 esp_i2c_hd44780_pcf8574_init(uint8_t columns, \
-    uint8_t rows, uint8_t dotsize, uint8_t backlight) {
+struct esp_i2c_hd44780_pcf8574 esp_i2c_hd44780_pcf8574_init(uint8_t columns, uint8_t rows, uint8_t dotsize, uint8_t backlight) {
 	/* {{{ */
 
 	struct esp_i2c_hd44780_pcf8574 ret = {
@@ -77,7 +76,7 @@ void esp_i2c_hd44780_pcf8574_begin(struct esp_i2c_hd44780_pcf8574 *esp_i2c_lcd) 
 
 	/* Set the display control of the LCD  (E.g. here: display = on,
 	 * cursor = on, cursor blinking = on) */
-	esp_i2c_hd44780_pcf8574_display_control(esp_i2c_lcd, 1, 1, 1);
+	esp_i2c_hd44780_pcf8574_display_control(esp_i2c_lcd, 1, 0, 0);
 
 	/* Clear the display */
 	esp_i2c_hd44780_pcf8574_clear_display(esp_i2c_lcd);
