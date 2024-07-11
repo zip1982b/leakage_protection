@@ -79,7 +79,7 @@ static QueueHandle_t buttons_queue = NULL;
 static SemaphoreHandle_t xSemaphore = NULL;
 
 
-uint8_t timer_on = 0;
+uint8_t timer_state = 0; // 1-active, 0-stoped
 
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
@@ -107,11 +107,13 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 
 	
 
-static void IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+static bool IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
-    gptimer_stop(timer);
-    timer_on = 0;
-    xSemaphoreGiveFromISR(xSemaphore, NULL);
+    	BaseType_t high_task_awoken = pdFALSE;
+	gptimer_stop(timer);
+    	timer_state = 0; //stoped
+    	xSemaphoreGiveFromISR(xSemaphore, NULL);
+	return (high_task_awoken == pdTRUE);
 }
 
 
@@ -297,7 +299,7 @@ void LCD_Display(void* param)
 			i2c_lcd.backlight = LCD_BACKLIGHT;
 			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
 			state_backlight = 1; 
-			if(timer_on){
+			if(timer_state){
 				gptimer_set_raw_count(gptimer, 1);
 			}
 			switch(state){
@@ -369,11 +371,11 @@ void LCD_Display(void* param)
 			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
 		}
 		else {
-			//ESP_LOGI(TAG, "Timer_on = %d", timer_on);
-			if(state_backlight && (timer_on == 0)){ //если подсветка включена и таймер ещё не запущен, тогда вкл таймер 
+			//ESP_LOGI(TAG, "Timer_on = %d", timer_state);
+			if(state_backlight && (timer_state == 0)){ //если подсветка включена и таймер ещё не запущен, тогда вкл таймер 
     				ESP_ERROR_CHECK(gptimer_start(gptimer));//начать счёт 5 секунд
 				ESP_LOGI(TAG, "[LCD Display] timer start");	
-				timer_on = 1;
+				timer_state = 1;
 			}
 		}
 	}	
