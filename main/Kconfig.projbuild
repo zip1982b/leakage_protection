@@ -4,7 +4,7 @@ menu "Leakage protection Configuration"
 
 
     config GPIO_DOWN
-	int "GPIO input pin"
+	int "GPIO down"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
         default 25
         help
@@ -12,7 +12,7 @@ menu "Leakage protection Configuration"
 
 
     config GPIO_UP
-        int "GPIO input pin"
+        int "GPIO up"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
         default 32
         help
@@ -20,7 +20,7 @@ menu "Leakage protection Configuration"
 
 
     config GPIO_OK
-	int "GPIO input pin"
+	int "GPIO ok"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
 	default 33
 	help
@@ -28,13 +28,18 @@ menu "Leakage protection Configuration"
 
 
     config GPIO_ESC
-	int "GPIO input pin"
+	int "GPIO esc"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_IN_RANGE_MAX
         default 26
         help
             GPIO pin number to be used as button ESC.
 
-    menu "I2C Master"
+    menu "I2C Master for lcd display"
+        config I2C_LCD_DEVICE_ADDRESS
+            int "slave address"
+            default 63
+            help
+                hd44780 pcf8574at - 0x3F address.
         config I2C_MASTER_SCL
             int "SCL GPIO Num"
             default 19
@@ -48,6 +53,32 @@ menu "Leakage protection Configuration"
                 GPIO number for I2C Master data line.
 
         config I2C_MASTER_FREQUENCY
+            int "Master Frequency"
+            default 100000
+            help
+                I2C Speed of Master device.
+    endmenu
+
+    menu "I2C Master for link main MCU and power MCU"
+        config I2C_mMCU_DEVICE_ADDRESS
+		int "slave address"
+		default 18
+		help
+		    Main MCU address 0x12.
+
+	config I2C_MASTER_SCL_LINK
+            int "SCL GPIO Num"
+            default 17
+            help
+                GPIO number for I2C Master clock line.
+
+        config I2C_MASTER_SDA_LINK
+            int "SDA GPIO Num"
+            default 15
+            help
+                GPIO number for I2C Master data line.
+
+        config I2C_MASTER_FREQUENCY_LINK
             int "Master Frequency"
             default 100000
             help

@@ -1,4 +1,5 @@
 /* water leakage protection
+ * Display MCU
  * ESP32 DevkitC v4 - Интерфейсный контроллер
  * Задачи:
  *  - отображение на дисплее меню по управлению устройством.
@@ -11,7 +12,7 @@
  *
 */
 #include <stdio.h>
-#include <string.h>
+#include <string.h> 
 #include <stdlib.h>
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
@@ -22,25 +23,33 @@
 #include "driver/gptimer.h"
 
 
-#include <driver/i2c.h>
+#include <driver/i2c_master.h>
 #include <esp_log.h>
 #include "sdkconfig.h"
-//#include "HD44780.h"
 /* Component includes */
 #include "esp32-i2c-hd44780-pcf8574.h"
 
+
+
+/**** I2C abonents ****/
+/*** LCD Display ***/
 #define I2C_MASTER_SDA_IO	CONFIG_I2C_MASTER_SDA 
 #define I2C_MASTER_SCL_IO 	CONFIG_I2C_MASTER_SCL
 #define I2C_MASTER_FREQUENCY	CONFIG_I2C_MASTER_FREQUENCY
+#define I2C_LCD_DEVICE_ADDRESS	CONFIG_I2C_LCD_DEVICE_ADDRESS 
 
-#define I2C_LCD_DEVICE_ADDRESS 0x3F
-#define LCD_COLS 	CONFIG_LCD_COLS
-#define LCD_ROWS 	CONFIG_LCD_ROWS
+/*** Main MCU ***/
+#define I2C_MASTER_SDA_IO_link		CONFIG_I2C_MASTER_SDA_LINK 
+#define I2C_MASTER_SCL_IO_link 		CONFIG_I2C_MASTER_SCL_LINK
+#define I2C_MASTER_FREQUENCY_link	CONFIG_I2C_MASTER_FREQUENCY_LINK
+#define I2C_mMCU_DEVICE_ADDRESS		CONFIG_I2C_mMCU_DEVICE_ADDRESS 
+#define LCD_COLS		 	CONFIG_LCD_COLS
+#define LCD_ROWS 			CONFIG_LCD_ROWS
 
 
 
 
-
+/****** keyboard ******/
 #define GPIO_DOWN		CONFIG_GPIO_DOWN
 #define GPIO_UP			CONFIG_GPIO_UP
 #define GPIO_OK			CONFIG_GPIO_OK
@@ -60,21 +69,26 @@
 	char menuItem1[] = "Sensors";
 	char menuItem2[] = "Ball valve";
 	char menuItem3[] = "Power";
-	char menuItem4[] = "Errors";
+	char menuItem4[] = "I2C Link";
 	char menuItem11[] = "wired sensors";
 	char menuItem12[] = "ble sensors";
 	char menuItem13[] = "bs1";
 	char menuItem14[] = "bs2";
+	char menuItem15[] = "main MCU";
+	char menuItem16[] = "power MCU";
 	char arrow[] = "<-";
+	char state_ok[] = "OK";
+	char state_nok[] = "NOK";
 
 static const char* TAG = "main";
 
-void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd);
-void LCD_Display(void* param);
+void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2c_link_mMCU);
+void LCD_Display(void *param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
-static QueueHandle_t i2c_data_queue = NULL;
+static QueueHandle_t i2c_data_queue_link_command = NULL;
+static QueueHandle_t i2c_data_queue_link_status = NULL;
 static QueueHandle_t buttons_queue = NULL;
 static SemaphoreHandle_t xSemaphore = NULL;
 
@@ -118,7 +132,7 @@ static bool IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_al
 
 
 
-void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd){
+void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2c_link_mMCU){
 
 
 	switch(state){
@@ -176,10 +190,72 @@ void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd){
 			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);
 			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, arrow);
 			break;
+		case 41:
+			esp_i2c_hd44780_pcf8574_clear_display(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem15);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x0d);
+			if(i2c_link_mMCU){
+				esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, state_ok);
+			}
+			else{
+				esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, state_nok);
+			}
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem16);
+			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);
+			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, state_nok);
+			/*if(i2c_link_mMCU){
+				
+			}*/
+			break;
 	}
 
 }
 
+void I2C_Link(void* param){
+	/***** I2C Device Configuration  *****/
+	/* 1. Configure the i2c master bus */
+	i2c_master_bus_config_t i2c_mst_config = {
+    		.clk_source = I2C_CLK_SRC_APB,
+    		.i2c_port = 0,
+    		.scl_io_num = I2C_MASTER_SCL_IO_link,
+    		.sda_io_num = I2C_MASTER_SDA_IO_link,
+    		.glitch_ignore_cnt = 7,
+		.flags.enable_internal_pullup = false,
+	};
+
+	i2c_master_bus_handle_t bus_handle;
+
+	ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle)); //installing the i2c master driver 
+	
+	/* 2. Configure the i2c MainMCU peripheral */
+	i2c_device_config_t mainMCU_dev_cfg = {
+    		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    		.device_address = I2C_mMCU_DEVICE_ADDRESS,
+    		.scl_speed_hz = I2C_MASTER_FREQUENCY_link,
+	};
+
+	i2c_master_dev_handle_t mainMCU_handle;
+	ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &mainMCU_dev_cfg, &mainMCU_handle));
+
+		
+	/* 3. Configure the i2c PowerMCU peripheral */
+
+
+
+
+
+
+	while(true){
+		printf("probing for i2c device..."); 
+		ESP_ERROR_CHECK(i2c_master_probe(bus_handle, 0x12, 500)); //I2C_mMCU_DEVICE_ADDRESS
+		printf(" SUCCESS!\n"); 
+    		vTaskDelay(10000/portTICK_PERIOD_MS); 
+
+	}
+
+}
 
 void LCD_Display(void* param)
 {
@@ -188,12 +264,13 @@ void LCD_Display(void* param)
 	uint8_t state = 1;
 	uint8_t state_backlight = 0;
 	uint8_t change = 0;
-
+	uint8_t state_link = 0;
+	uint8_t command_link = 0;
 	/***** I2C Device Configuration  *****/
 	/* 1. Configure the i2c master bus */
 	i2c_master_bus_config_t i2c_mst_config = {
     		.clk_source = I2C_CLK_SRC_DEFAULT,
-    		.i2c_port = -1,
+    		.i2c_port = 1,
     		.scl_io_num = I2C_MASTER_SCL_IO,
     		.sda_io_num = I2C_MASTER_SDA_IO,
     		.glitch_ignore_cnt = 7,
@@ -259,7 +336,7 @@ void LCD_Display(void* param)
 	
 	/* state 1 */
 	state = 1;
-	LCD_Menu(state, &i2c_lcd);
+	LCD_Menu(state, &i2c_lcd, NULL);
 
     while (true) {
 		io_num = 0;
@@ -306,64 +383,76 @@ void LCD_Display(void* param)
 				case 1:
 					if(io_num == 25) {
 						state = 2;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 33){
 						state = 11;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 2:
 					if(io_num == 25){
 				   		state = 3;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if (io_num == 32){
 				   		state = 1;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 3:
 					if(io_num == 25){
 				   		state = 4;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 32) {
 						state = 2;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 4:
 					if(io_num == 32){
 				   		state = 3;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					if(io_num == 33){
+				   		state = 41;
+						LCD_Menu(state, &i2c_lcd, NULL);
+					}
+					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 11:
 					if(io_num == 25){
 				   		state = 12;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 26){
 						state = 1;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 12:
 					if(io_num == 32){
 						state = 11;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 26){
 						state = 1;
-						LCD_Menu(state, &i2c_lcd);
+						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd);
+					else LCD_Menu(state, &i2c_lcd, NULL);
+					break;
+				case 41:
+					xQueueReceive(i2c_data_queue_link_status, &state_link, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
+					if(io_num == 26){
+						state = 4;
+						LCD_Menu(state, &i2c_lcd, NULL);
+					}
+					else LCD_Menu(state, &i2c_lcd, state_link);
 					break;
 			}
 
@@ -413,12 +502,17 @@ void app_main(void)
 /***create a queue to handle gpio event from isr***/
     	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));
-	i2c_data_queue = xQueueCreate(10, sizeof(uint32_t));
+	i2c_data_queue_link_command = xQueueCreate(5, sizeof(uint8_t));
+	i2c_data_queue_link_status = xQueueCreate(5, sizeof(uint8_t));
 
 
     xSemaphore = xSemaphoreCreateBinary();
 
 /***** start tasks *************************/
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    xTaskCreate(I2C_Link, "i2c link Task", 3048, NULL, 5, NULL);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     xTaskCreate(LCD_Display, "LCD Display Task", 3048, NULL, 5, NULL);
     printf("Minimum free heap size: %"PRIu32" bytes\n", esp_get_minimum_free_heap_size());
 
