@@ -4,7 +4,8 @@
  * Задачи:
  *  - отображение на дисплее меню по управлению устройством.
  *  - связь с беспроводными датчиками по BLE.
- *  - обмен данными с главным контроллером (stm32f103) по i2c.
+ *  - обмен данными с mmcu-главным контроллером (stm32f103) по i2c.
+ *  - обмен данными с pmcu  (stm32f103) по i2c.
  * 
  * Состав:
  *  дисплей HD44780 подключенный по i2c
@@ -81,13 +82,41 @@
 	char state_nok[] = "NOK";
 
 static const char* TAG = "main";
+enum state // состояние
+{
+	OPEN,   // открыт
+	CLOSED, // закрыт
+	OPENS,	// открывается
+	CLOSES	// закрывается
+};
 
-void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2c_link_mMCU);
+enum power{
+	BAT,
+	LINE
+};
+
+
+struct status_mmcu{
+	uint8_t i2c_link_mmcu;//0 - not connected, 1 - connected
+	uint8_t sensor1;	//0 - not detected, 1 - detected
+	uint8_t sensor2;
+	enum state ball_value;//0-open, 1-closed, 2-opens, 3-closes
+};
+
+typedef struct{
+	uint8_t state_lcd;
+	uint8_t backlight;//0-backlight off, 1-backlight on
+}lcd_draw;
+
+
+
+
+void Draw_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd);
 void LCD_Display(void *param);
 
 
 static QueueHandle_t gpio_evt_queue = NULL;
-static QueueHandle_t i2c_data_queue_link_command = NULL;
+static QueueHandle_t data_for_draw_queue = NULL;
 static QueueHandle_t i2c_data_queue_link_status = NULL;
 static QueueHandle_t buttons_queue = NULL;
 static SemaphoreHandle_t xSemaphore = NULL;
@@ -132,7 +161,7 @@ static bool IRAM_ATTR timer_on_alarm_cb(gptimer_handle_t timer, const gptimer_al
 
 
 
-void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2c_link_mMCU){
+void Draw_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd){
 
 
 	switch(state){
@@ -195,12 +224,12 @@ void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2
 			esp_i2c_hd44780_pcf8574_cursor_home(i2c_lcd);
 			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem15);
 			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x0d);
-			if(i2c_link_mMCU){
+		//	if(i2c_link_mMCU){
 				esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, state_ok);
-			}
-			else{
+//			}
+//			else{
 				esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, state_nok);
-			}
+//			}
 			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x40);
 			esp_i2c_hd44780_pcf8574_send_str(i2c_lcd, menuItem16);
 			esp_i2c_hd44780_pcf8574_set_cursor_pos(i2c_lcd, 0x4d);
@@ -213,59 +242,14 @@ void LCD_Menu(uint8_t state, struct esp_i2c_hd44780_pcf8574 *i2c_lcd, uint8_t i2
 
 }
 
+
+
+
 void I2C_Link(void* param){
-	/***** I2C Device Configuration  *****/
-	/* 1. Configure the i2c master bus */
-	i2c_master_bus_config_t i2c_mst_config = {
-    		.clk_source = I2C_CLK_SRC_APB,
-    		.i2c_port = 0,
-    		.scl_io_num = I2C_MASTER_SCL_IO_link,
-    		.sda_io_num = I2C_MASTER_SDA_IO_link,
-    		.glitch_ignore_cnt = 7,
-		.flags.enable_internal_pullup = false,
-	};
-
-	i2c_master_bus_handle_t bus_handle;
-
-	ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle)); //installing the i2c master driver 
-	
-	/* 2. Configure the i2c MainMCU peripheral */
-	i2c_device_config_t mainMCU_dev_cfg = {
-    		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
-    		.device_address = I2C_mMCU_DEVICE_ADDRESS,
-    		.scl_speed_hz = I2C_MASTER_FREQUENCY_link,
-	};
-
-	i2c_master_dev_handle_t mainMCU_handle;
-	ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &mainMCU_dev_cfg, &mainMCU_handle));
-
-		
-	/* 3. Configure the i2c PowerMCU peripheral */
-
-
-
-
-
-
-	while(true){
-		printf("probing for i2c device..."); 
-		ESP_ERROR_CHECK(i2c_master_probe(bus_handle, 0x12, 500)); //I2C_mMCU_DEVICE_ADDRESS
-		printf(" SUCCESS!\n"); 
-    		vTaskDelay(10000/portTICK_PERIOD_MS); 
-
-	}
-
-}
-
-void LCD_Display(void* param)
-{
-    	uint32_t io_num;
+	struct status_mmcu status_for_lcd = {0, 0, 0, 1};//i2c - not connected, s1-not detected, s2-not detected, bv-closed
+	esp_err_t status;
+	lcd_draw data_draw; 
 	portBASE_TYPE xStatusReceive;
-	uint8_t state = 1;
-	uint8_t state_backlight = 0;
-	uint8_t change = 0;
-	uint8_t state_link = 0;
-	uint8_t command_link = 0;
 	/***** I2C Device Configuration  *****/
 	/* 1. Configure the i2c master bus */
 	i2c_master_bus_config_t i2c_mst_config = {
@@ -281,7 +265,7 @@ void LCD_Display(void* param)
 
 	ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
 	
-	/* 2. Configure the i2c LCD peripheral */
+	/* 2a. Configure the i2c LCD peripheral */
 	i2c_device_config_t lcd_dev_cfg = {
     		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
     		.device_address = I2C_LCD_DEVICE_ADDRESS,
@@ -292,19 +276,81 @@ void LCD_Display(void* param)
 	ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &lcd_dev_cfg, &lcd_handle));
 	
 
-	/* printf("probing for i2c device..."); */
-	/* ESP_ERROR_CHECK(i2c_master_probe(bus_handle, 0x27, -1)); */
-	/* printf(" SUCCESS!\n"); */
+	 printf("probing for lcd i2c device...\n"); 
+	 status = i2c_master_probe(bus_handle, 0x3F, 300);
+	 if (status == ESP_OK){ 
+	 	printf("LCD PCF8574AT device is found!\n");
+	 }
+	 else {
+		 printf("LCD PCF8574AT device is not found!\n");
+	 }
 
-	/* 3a. Perform device specific initialization */
+	/* 2b. Configure the i2c MainMCU peripheral */
+	i2c_device_config_t mainMCU_dev_cfg = {
+    		.dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    		.device_address = I2C_mMCU_DEVICE_ADDRESS,
+    		.scl_speed_hz = I2C_MASTER_FREQUENCY_link,
+	};
+
+	i2c_master_dev_handle_t mainMCU_handle;
+	ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &mainMCU_dev_cfg, &mainMCU_handle));
+	
+	printf("probing for main mcu i2c device...\n"); 
+	status = i2c_master_probe(bus_handle, 0x12, 300);
+        if(status==ESP_OK){
+		printf("main MCU is found!\n"); 
+		status_for_lcd.i2c_link_mmcu = 1;//found
+	}
+	else{
+		status_for_lcd.i2c_link_mmcu = 0;//not found
+		printf("main MCU is not found!\n"); 
+	}
+
+/* 3a. Perform device specific initialization */
 	struct esp_i2c_hd44780_pcf8574 i2c_lcd = esp_i2c_hd44780_pcf8574_init(16, 2, -1, LCD_NOBACKLIGHT);
 	i2c_lcd.i2c_handle = &lcd_handle;
 
 	/* 3b. Perform the necessary startup instructions for our LCD. */
 	esp_i2c_hd44780_pcf8574_begin(&i2c_lcd);
 
-	/***GPTimer settings***/
+	data_draw.state_lcd = 1;
+	Draw_Menu(data_draw.state_lcd, &i2c_lcd);
+
+	while(true){
+		xStatusReceive = xQueueReceive(data_for_draw_queue, &data_draw, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
+		if(xStatusReceive == pdPASS){
+			if(data_draw.backlight){
+			/*вкл подсветки экрана*/
+				i2c_lcd.backlight = LCD_BACKLIGHT;
+				esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
+			}
+			else{
+				i2c_lcd.backlight = LCD_NOBACKLIGHT;
+				esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
+			}
+			Draw_Menu(data_draw.state_lcd, &i2c_lcd);
+		}
+	}
+
+}
+
+
+
+
+
+
+void LCD_Display(void* param)
+{
+	struct status_mmcu status_for_lcd = {0, 0, 0, 1, 1};//i2c - not connected, s1-not detected, s2-not detected, bv-closed, pt-line
+    	uint32_t io_num;
+	portBASE_TYPE xStatusReceive;
+	uint8_t state = 1;
+	uint8_t state_backlight = 0;
+	uint8_t change = 0;
+	lcd_draw data_draw; 
 	
+	
+	/***GPTimer settings***/
     	ESP_LOGI(TAG, "Create timer handle");
     	gptimer_handle_t gptimer = NULL;
     	gptimer_config_t timer_config = {
@@ -334,20 +380,23 @@ void LCD_Display(void* param)
     	vTaskDelay(100 / portTICK_PERIOD_MS); 
 
 	
-	/* state 1 */
 	state = 1;
-	LCD_Menu(state, &i2c_lcd, NULL);
-
-    while (true) {
+    	while (true) {
 		io_num = 0;
+		/*отключение подсветки, после того как таймер отсчитает 5 sec*/
 		if(xSemaphoreTake(xSemaphore, 300/portTICK_PERIOD_MS))
      		{
 			ESP_LOGI(TAG, "[LCD Display] semathore take");	
-			i2c_lcd.backlight = LCD_NOBACKLIGHT;
-			esp_i2c_hd44780_pcf8574_cursor_home(&i2c_lcd);
 			state_backlight = 0;
+		        data_draw.backlight = state_backlight;
+			data_draw.state_lcd = state;	
+			xQueueSendToBack(data_for_draw_queue, &data_draw, 150/portTICK_PERIOD_MS);
      		}
-		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
+
+
+
+		/* Была ли нажата кнопка на клавиатуре...*/
+		xStatusReceive = xQueueReceive(buttons_queue, &io_num, 50/portTICK_PERIOD_MS); // блокирует работу других задач portMAX_DELAY - пока не получит данные 
 		if(xStatusReceive == pdPASS){
     			vTaskDelay(500 / portTICK_PERIOD_MS);
 			change = 1;
@@ -373,94 +422,101 @@ void LCD_Display(void* param)
 
 
 		if(change){
-			i2c_lcd.backlight = LCD_BACKLIGHT;
-			esp_i2c_hd44780_pcf8574_clear_display(&i2c_lcd);
-			state_backlight = 1; 
+			/*вкл подсветки экрана*/
+			state_backlight = 1;
+		        data_draw.backlight = state_backlight;	
+			
 			if(timer_state){
 				gptimer_set_raw_count(gptimer, 1);
 			}
+
+
+			/*отрисовка меню*/
 			switch(state){
 				case 1:
+					/* Sensors	<-
+					 * Ball valve
+					 * */
 					if(io_num == 25) {
 						state = 2;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 33){
 						state = 11;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 2:
+					/* Sensors	
+					 * Ball valve	<-
+					 * */
 					if(io_num == 25){
 				   		state = 3;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if (io_num == 32){
 				   		state = 1;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 3:
+					/* Power	<-
+					 * I2C Link
+					 */
 					if(io_num == 25){
 				   		state = 4;
-						LCD_Menu(state, &i2c_lcd, NULL);
+						//Draw_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 32) {
 						state = 2;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 4:
+					/* Power	
+					 * I2C Link	<-
+					 */
 					if(io_num == 32){
 				   		state = 3;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					if(io_num == 33){
 				   		state = 41;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 11:
+					/* wired sensors	<-
+					 * BLE sensors
+					 */
 					if(io_num == 25){
 				   		state = 12;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 26){
 						state = 1;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 12:
+					/* wired sensors	
+					 * BLE sensors	<-
+					 */
 					if(io_num == 32){
 						state = 11;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
 					else if(io_num == 26){
 						state = 1;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, NULL);
 					break;
 				case 41:
-					xQueueReceive(i2c_data_queue_link_status, &state_link, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
+					/* main MCU - ok/nok
+					 * power MCU - ok/nok
+					 */
+					//xQueueReceive(i2c_data_queue_link_status, &state_link, 50/portTICK_PERIOD_MS); // portMAX_DELAY - пока не получит данные 
 					if(io_num == 26){
 						state = 4;
-						LCD_Menu(state, &i2c_lcd, NULL);
 					}
-					else LCD_Menu(state, &i2c_lcd, state_link);
 					break;
 			}
 
 			change = 0;
-			ESP_LOGI(TAG, "[LCD Display] state = %d", state);	
+			ESP_LOGI(TAG, "[LCD Display] state = %d", state);
+			data_draw.state_lcd = state;	
+			xQueueSendToBack(data_for_draw_queue, &data_draw, 150/portTICK_PERIOD_MS);
 		}
 		else {
-			//ESP_LOGI(TAG, "Timer_on = %d", timer_state);
 			if(state_backlight && (timer_state == 0)){ //если подсветка включена и таймер ещё не запущен, тогда вкл таймер 
     				ESP_ERROR_CHECK(gptimer_start(gptimer));//начать счёт 5 секунд
 				ESP_LOGI(TAG, "[LCD Display] timer start");	
@@ -502,7 +558,7 @@ void app_main(void)
 /***create a queue to handle gpio event from isr***/
     	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
 	buttons_queue = xQueueCreate(10, sizeof(uint32_t));
-	i2c_data_queue_link_command = xQueueCreate(5, sizeof(uint8_t));
+	data_for_draw_queue = xQueueCreate(5, sizeof(lcd_draw));
 	i2c_data_queue_link_status = xQueueCreate(5, sizeof(uint8_t));
 
 
